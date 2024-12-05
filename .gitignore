@@ -14,11 +14,12 @@ main
 
 # Исключить явно указанные файлы из игнорирования
 !main.c
-!CLanguage.g
+!Lang.g
 !input.txt
 
 # Игнорировать служебные каталоги
 parser/
 .include/
+.idea/
 
 .DS_Store
