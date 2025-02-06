@@ -1,11 +1,10 @@
 # Игнорировать каталоги ANTLR и Visual Studio Code
 .antlr/
-.vscode/
 
 # Игнорировать временные и сгенерированные файлы
-*.tokens
-*.c
-*.h
+/grammar
+build/*
+
 *.dot
 *.png
 
@@ -14,7 +13,7 @@ main
 
 # Исключить явно указанные файлы из игнорирования
 !main.c
-!Lang.g
+!Grammar.g
 !input.txt
 
 # Игнорировать служебные каталоги
