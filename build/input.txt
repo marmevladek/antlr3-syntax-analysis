@@ -1,20 +1,12 @@
-int sum(int a, int b) {
-    return a + b;
-}
-void main() {
-    int x = 5, y = 15;
-    int result = sum(x, y);
-    if (result > 10) {
-        result = result * 2;
-    } else {
-        result = result / 2;
+bool check_function() {
+    int i = 0;
+    while (i < 5) {
+        int m;
+        int n;
+        if (i > 2) {
+            m = 3;
+        } else {
+            n = 2;
+        }
     }
-    while (result > 0) {
-        result = result - 1;
-    }
-    do {
-        x = x + 1;
-    } while (x < 10);
-    arr[0] = 42;
-    return;
 }

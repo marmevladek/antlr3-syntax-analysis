@@ -1,222 +1,302 @@
 grammar Grammar;
 
 options {
-  language=C;
-  output=AST;
-  backtrack=true;
+    language = C;
+    output = AST;
+    backtrack = true;
+    ASTLabelType = pANTLR3_BASE_TREE;
 }
 
 tokens {
-  SourceToken;
-  FuncDefToken;
-  FuncSignatureToken;
-  ArgListToken;
-  TypeRefToken;
-  ExpressionToken;
-  LoopToken;
-  DoWhileToken;
-  ArgToken;
-  Body;
-  BreakToken;
-  VarDeclToken;
-  CallToken;
-  ArrayToken;
-  ArrayList;
-  IfToken;
-  BlockToken;
-  WhileToken;
-  ReturnToken;
+  Source;
+  SourceItem;
+  FuncDef;
+  Statement;
+  Expression;
+  BreakStatement;
+  DoStatement;
+  WhileStatement;
+  Block;
+  IfStatement;
+  Var;
+  FuncSignature;
+  List;
+  IdItem;
+  ArgDef;
+  TypeRef;
+  Array;
+  Custom;
+  Builtin;
+  Expr;
+  Literal;
+  Place;
+  Indexer;
+  Call;
+  Braces;
+  Unary;
+  UnOp;
+  Binary;
+  BinOpBinAssAnd;
+  BinOpBinAssXOR;
+  BinOpBinAssOr;
+  BinOpBinAssLS;
+  BinOpBinAssRS;
+  BinOpBinAssMul;
+  BinOpBinAssDiv;
+  BinOpBinAssMod;
+  BinOpBinAssSum;
+  BinOpBinAssNeg;
+  BinOpAss;
+  BinOpLogOr;
+  BinOpLogAnd;
+  BinOpBinOr;
+  BinOpBinXOR;
+  BinOpBinAnd;
+  BinOpEq;
+  BinOpNonEq;
+  BinOpLt;
+  BinOpLte;
+  BinOpGt;
+  BinOpGte;
+  BinOpBinLS;
+  BinOpBinRS;
+  BinOpBinPlus;
+  BinOpBinMinus;
+  BinOpMul;
+  BinOpDiv;
+  BinOpMod;
+  BoolStatement;
+  Dec;
+  Bits;
+  Hex;
+  CharStatement;
+  Str;
+  Identifier;
 }
 
-source
-  : sourceItem* -> ^(SourceToken sourceItem*)
-  ;
+@header
+{
+   #define _empty NULL
+}
 
-sourceItem
-  : funcDef
-  ;
+ID: ('a'..'z' | 'A'..'Z' | '_')('a'..'z' | 'A'..'Z' | '_' | '0'..'9')*;
+identifier: ID -> ^(Identifier ID);
 
-funcDef
-  : funcSignature (block | ';') -> ^(FuncDefToken funcSignature block?)
-  ;
+STRING: '"' ~('\\' | '"')* ('\\'~('\r' | '\n') ~('\\' | '"')*)* '"';
+str: STRING -> ^(Str STRING); 
 
-funcSignature
-  : typeRef? identifier '(' argList ')' -> ^(FuncSignatureToken typeRef? identifier argList)
-  ;
+CHARACTER: '\'' ~('\'') '\'';
+charStatement: CHARACTER -> ^(CharStatement CHARACTER);
 
-argList
-  : (argDef (',' argDef)*)? -> ^(ArgListToken argDef*)
-  ;
+HEXADEMIC: '0'('x' | 'X')('0'..'9' | 'A'..'F' | 'a'..'f')+;
+hex: HEXADEMIC -> ^(Hex HEXADEMIC);
 
-argDef
-  : typeRef? identifier -> ^(ArgToken typeRef? identifier)
-  ;
+BIT: '0'('b' | 'B')('0' | '1')+;
+bits: BIT -> ^(Bits BIT);
 
-statement
-  : varDeclaration
-  | ifStatement
-  | whileStatement
-  | doWhileStatement
-  | breakStatement
-  | returnStatement
-  | expressionStatement
-  | block
-  ;
+DECIMAL: ('0'..'9')+;
+dec: DECIMAL -> ^(Dec DECIMAL);
 
-block
-  : '{' statement* '}' -> ^(BlockToken statement*)
-  ;
+boolStatement: tr='true' -> ^(BoolStatement $tr)
+| fl='false' -> ^(BoolStatement $fl)
+;
 
-varDeclaration
-  : typeRef (identifier ('=' expr)?) (',' identifier ('=' expr)?)* ';'
-  -> ^(VarDeclToken typeRef (identifier expr?)*)
-  ;
 
-ifStatement
-  : 'if' '(' expr ')' statement ('else' statement)?
-  -> ^(IfToken expr statement statement?)
-  ;
+binOpBinAssLog: assbina='&=' -> ^(BinOpBinAssAnd)
+| assbinx='^=' -> ^(BinOpBinAssXOR)
+| assbino='|=' -> ^(BinOpBinAssOr)
+;
 
-whileStatement
-  : 'while' '(' expr ')' statement
-  -> ^(WhileToken expr statement)
-  ;
+binOpBinAssShift: assbinls='<<=' -> ^(BinOpBinAssLS)
+| assbinrs='>>=' -> ^(BinOpBinAssRS)
+;
 
-doWhileStatement
-  : 'do' block 'while' '(' expr ')' ';'
-  -> ^(DoWhileToken block expr)
-  ;
+binOpMultAss: assmul='*=' -> ^(BinOpBinAssMul)
+| assdiv='/=' -> ^(BinOpBinAssDiv)
+| assmod='%=' -> ^(BinOpBinAssMod)
+;
 
-breakStatement
-  : 'break' ';' -> ^(BreakToken)
-  ;
+binOpSumAss: asssum='+=' -> ^(BinOpBinAssSum) 
+| assneg='-=' -> ^(BinOpBinAssNeg)
+;
 
-returnStatement
-  : 'return' expr? ';' -> ^(ReturnToken expr?)
-  ;
+binOpAss: '=' -> ^(BinOpAss);
 
-expressionStatement
-  : expr ';' -> ^(ExpressionToken expr)
-  ;
+binOpLogOr: '||' -> ^(BinOpLogOr);
 
-expr
-  : assignExpr
-  ;
+binOpLogAnd: '&&' -> ^(BinOpLogAnd);
 
-assignExpr
-  : logicalOrExpr ('=' assignExpr)?
-  ;
+binOpBinOr: '|' -> ^(BinOpBinOr);
 
-logicalOrExpr
-  : logicalAndExpr ('||' logicalAndExpr)*
-  ;
+binOpXOR: '^' -> ^(BinOpBinXOR);
 
-logicalAndExpr
-  : equalityExpr ('&&' equalityExpr)*
-  ;
+binOpBinAnd: '&' -> ^(BinOpBinAnd);
 
-equalityExpr
-  : relationalExpr (('==' | '!=') relationalExpr)*
-  ;
+binOpEq: eq='==' -> ^(BinOpEq) 
+| noneq='!=' -> ^(BinOpNonEq)
+;
 
-relationalExpr
-  : additiveExpr (('<' | '<=' | '>' | '>=') additiveExpr)*
-  ;
+binOpComp: lt='<' -> ^(BinOpLt) 
+| lte='<=' -> ^(BinOpLte) 
+| gt='>' -> ^(BinOpGt) 
+| gte='>=' -> ^(BinOpGte)
+;
 
-additiveExpr
-  : multiplicativeExpr (('+' | '-') multiplicativeExpr)*
-  ;
+binOpBinShift: binls='<<' -> ^(BinOpBinLS) 
+| binrs='>>' -> ^(BinOpBinRS)
+;
 
-multiplicativeExpr
-  : unaryExpr (('*' | '/' | '%') unaryExpr)*
-  ;
+binOpPlus: binp='+' -> ^(BinOpBinPlus) 
+| binm='-' -> ^(BinOpBinMinus)
+;
 
-unaryExpr
-  : UnOp unaryExpr
-  | primaryExpr
-  ;
+binOpMult: binmul='*' -> ^(BinOpMul) 
+| bindiv='/' -> ^(BinOpDiv) 
+| binmod='%' -> ^(BinOpMod)
+;
 
-primaryExpr
-  : '(' expr ')'
-  | identifier '(' expressionList? ')'  -> ^(CallToken identifier expressionList?)
-  | identifier '[' expressionList ']' -> ^(ArrayToken identifier expressionList)
-  | identifier
-  | Literal
-  ;
 
-expressionList
-  : expr (',' expr)*
-  ;
+binary: assShiftBinary (binOpBinAssLog assShiftBinary)* -> ^(Binary assShiftBinary (binOpBinAssLog assShiftBinary)*);
+assShiftBinary: multAssBinary (binOpBinAssShift^ multAssBinary)*;// -> ^(Binary multAssBinary (binOpBinAssShift multAssBinary)*);
+multAssBinary: sumAssBinary (binOpMultAss^ sumAssBinary)*;// -> ^(Binary sumAssBinary (binOpMultAss sumAssBinary)*);
+sumAssBinary: assBinary (binOpSumAss^ assBinary)*;// -> ^(Binary assBinary (binOpSumAss assBinary)*);
+assBinary: logOrBinary (binOpAss^ logOrBinary)*;// -> ^(Binary logOrBinary (binOpAss logOrBinary)*);
+logOrBinary: logAndBinary (binOpLogOr^ logAndBinary)*;// -> ^(Binary logAndBinary (binOpLogOr logAndBinary)*);
+logAndBinary: binOrBinary (binOpLogAnd^ binOrBinary)*;// -> ^(Binary binOrBinary (binOpLogAnd binOrBinary)*);
+binOrBinary: xorBinary (binOpBinOr^ xorBinary)*;// -> ^(Binary xorBinary (binOpBinOr xorBinary)*);
+xorBinary: binAndBinary (binOpXOR^ binAndBinary)*;// -> ^(Binary binAndBinary (binOpXOR binAndBinary)*);
+binAndBinary: eqBinary (binOpBinAnd^ eqBinary)*;// -> ^(Binary eqBinary (binOpBinAnd eqBinary)*);
+eqBinary: compBinary (binOpEq^ compBinary)*;// -> ^(Binary compBinary (binOpEq compBinary)*);
+compBinary: binShiftBinary (binOpComp^ binShiftBinary)*;// -> ^(Binary binShiftBinary (binOpComp binShiftBinary)*);
+binShiftBinary: plusBinary (binOpBinShift^ plusBinary)*;// -> ^(Binary plusBinary (binOpBinShift plusBinary)*);
+plusBinary: multBinary (binOpPlus^ multBinary)*;// -> ^(Binary multBinary (binOpPlus multBinary)*);
+multBinary: exprTerm (binOpMult^ expr)*;// -> ^(Binary exprTerm (binOpMult expr)+);
 
-typeRef
-  : builtin
-  | identifier
-  | arrayType
-  ;
+//binary: assShiftBinary (binOpBinAssLog assShiftBinary)* -> ^(Binary assShiftBinary (binOpBinAssLog assShiftBinary)*);
+//assShiftBinary: multAssBinary (binOpBinAssShift multAssBinary)*;
+//multAssBinary: sumAssBinary (binOpMultAss sumAssBinary)*;
+//sumAssBinary: assBinary (binOpSumAss assBinary)*;
+//assBinary: logOrBinary (binOpAss logOrBinary)*;
+//logOrBinary: logAndBinary (binOpLogOr logAndBinary)*;
+//logAndBinary: binOrBinary (binOpLogAnd binOrBinary)*;
+//binOrBinary: xorBinary (binOpBinOr xorBinary)*;
+//xorBinary: binAndBinary (binOpXOR binAndBinary)*;
+//binAndBinary: eqBinary (binOpBinAnd eqBinary)*;
+//eqBinary: compBinary (binOpEq compBinary)*;
+//compBinary: binShiftBinary (binOpComp binShiftBinary)*;
+//binShiftBinary: plusBinary (binOpBinShift plusBinary)*;
+//plusBinary: multBinary (binOpPlus multBinary)*;
+//multBinary: exprTerm (binOpMult expr)*;
+//multBinary: (braces | call | indexer | place | literal) (binOpMult expr)*;
 
-arrayType
-  : (builtin | identifier) '[' (',')* ']' -> ^(ArrayList builtin? identifier?)
-  ;
+unOpNeg: logneg='!' -> ^(UnOp $logneg) 
+| binneg='~' -> ^(UnOp $binneg) 
+;
 
-builtin
-  : BuiltIn
-  ;
+unOpPlus: unp='+' -> ^(UnOp $unp)  
+| unm='-' -> ^(UnOp $unm) 
+;
 
-BinOp
-  : '+' | '-' | '*' | '/' | '%' 
-  | '&&' | '||' 
-  | '&' | '|' | '^' 
-  | '==' | '!=' | '<' | '<=' | '>' | '>='
-  ;
+unOpFix: uninc='++' -> ^(UnOp $uninc)  
+| undec='--' -> ^(UnOp $undec) 
+;
 
-UnOp
-  : '-' | '!'
-  ;
+unary: (unOpFix | unOpPlus | unOpNeg) expr -> ^(Unary unOpFix? unOpPlus? unOpNeg? expr);
 
-Literal
-  : Bool
-  | Bits
-  | Hex
-  | Dec
-  | Char
-  | Str
-  ;
+braces: '(' expr ')' -> ^(Braces '(' expr ')');
 
-identifier
-  : Identifier
-  ;
+listExpr: (expr (',' expr)*)? -> ^(List (expr (',' expr)*)?);
 
-fragment
-Bool:  ('true'|'false');
+call: '(' listExpr ')' -> ^(Call '(' listExpr ')');
 
-fragment
-Bits:  '0' ('b'|'B') ('0'..'1')+;
+indexer: '[' listExpr ']' -> ^(Indexer '[' listExpr ']');
 
-fragment
-Hex :  '0' ('x'|'X') ('0'..'9'|'a'..'f'|'A'..'F')+;
+place: identifier -> ^(Place identifier);
 
-fragment
-Dec  :  ('0'..'9')+;
+literal: boolStatement -> ^(Literal boolStatement)
+| str -> ^(Literal str)
+| charStatement -> ^(Literal charStatement)
+| hex -> ^(Literal hex)
+| bits -> ^(Literal bits)
+| dec -> ^(Literal dec)
+;
 
-fragment
-Char:  '\'' ~('\'') '\'';
+expr: binary -> ^(Expr binary);
 
-fragment
-Str :  '"' ( ~('"'|'\\') | ('\\'.) )* '"';
+exprTerm: unary exprTermTerm -> ^(Expr unary exprTermTerm)
+| braces exprTermTerm -> ^(Expr braces exprTermTerm)
+| place exprTermTerm -> ^(Expr place exprTermTerm)
+| literal exprTermTerm -> ^(Expr literal exprTermTerm)
+;
 
-BuiltIn
-  :  'bool'
-  |  'byte'
-  |  'int'
-  |  'uint'
-  |  'long'
-  |  'ulong'
-  |  'char'
-  |  'string'
-  ;
+exprTermTerm: ((call | indexer)+)?;
+	
 
-Identifier
-  :  ('a'..'z'|'A'..'Z'|'_') ('a'..'z'|'A'..'Z'|'_'|'0'..'9')*
-  ;
+builtin: bl='bool' -> ^(Builtin $bl)
+| bt='byte' -> ^(Builtin $bt)
+| it='int' -> ^(Builtin $it)
+| uit='uint' -> ^(Builtin $uit)
+| lng='long' -> ^(Builtin $lng)
+| ulng='ulong' -> ^(Builtin $ulng)
+| cha='char' -> ^(Builtin $cha)
+| strng='string' -> ^(Builtin $strng)
+;
 
-WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') { $channel=HIDDEN; };
+custom: identifier -> ^(Custom identifier);
+
+array: custom ('[' (',')* ']')+ -> ^(Array custom ('[' (',')* ']')+)
+| builtin ('[' (',')* ']')+ -> ^(Array builtin ('[' (',')* ']')+)
+;
+
+typeRef: custom -> ^(TypeRef custom)
+| builtin -> ^(TypeRef builtin)
+| array -> ^(TypeRef array)
+;
+
+argDef: typeRef? identifier -> ^(ArgDef typeRef? identifier);
+
+listArgDef: (argDef (',' argDef)*)? -> ^(List (argDef (',' argDef)*)?);
+
+identifierItem: identifier (binOpAss expr)? -> ^(IdItem identifier (binOpAss expr)?);
+listIdentifier: (identifierItem (',' identifierItem)*)? -> ^(List (identifierItem (',' identifierItem)*)?);
+
+funcSignature: typeRef? identifier '(' listArgDef ')' -> ^(FuncSignature typeRef? identifier '(' listArgDef ')');
+
+var: typeRef listIdentifier ';' -> ^(Var typeRef listIdentifier ';'); // for static typing
+
+ifStatement: 'if' '(' expr ')' statement ('else' statement)? -> ^(IfStatement 'if' '(' expr ')' statement ('else' statement)?);
+
+block: '{' statement* '}' -> ^(Block '{' statement* '}');
+
+whileStatement: 'while' '(' expr ')' statement -> ^(WhileStatement 'while' '(' expr ')' statement);
+
+doStatement: 'do' block 'while' '(' expr ')' ';' -> ^(DoStatement 'do' block 'while' '(' expr ')' ';');
+
+breakStatement: 'break' ';' -> ^(BreakStatement 'break' ';');
+
+expression: expr ';' -> ^(Expression expr ';');
+
+statement: var -> ^(Statement var)
+| ifStatement -> ^(Statement ifStatement)
+| block -> ^(Statement block)
+| whileStatement -> ^(Statement whileStatement)
+| doStatement -> ^(Statement doStatement)
+| breakStatement -> ^(Statement breakStatement)
+| expression -> ^(Statement expression)
+;
+
+
+//funcDef: funcSignature (block | ';');
+funcDef: funcSignature block -> ^(FuncDef funcSignature block)
+		| funcSignature ';' -> ^(FuncDef funcSignature ';')
+		;
+
+sourceItem: funcDef -> ^(SourceItem funcDef);
+
+source: sourceItem* -> ^(Source sourceItem*);
+
+WHITESPACE  : ( '\t' | ' ' | '\r' | '\n'| '\u000C' )+
+              {
+                 $channel = HIDDEN;
+              }
+            ;
