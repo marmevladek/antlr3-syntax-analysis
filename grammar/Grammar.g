@@ -25,6 +25,7 @@ tokens {
   IfToken;
   BlockToken;
   WhileToken;
+  ReturnToken;
 }
 
 source
@@ -57,6 +58,7 @@ statement
   | whileStatement
   | doWhileStatement
   | breakStatement
+  | returnStatement
   | expressionStatement
   | block
   ;
@@ -66,8 +68,8 @@ block
   ;
 
 varDeclaration
-  : typeRef identifier ('=' expr)? (',' identifier ('=' expr)?)* ';'
-  -> ^(VarDeclToken typeRef identifier expr? identifier* expr*)
+  : typeRef (identifier ('=' expr)?) (',' identifier ('=' expr)?)* ';'
+  -> ^(VarDeclToken typeRef (identifier expr?)*)
   ;
 
 ifStatement
@@ -89,26 +91,57 @@ breakStatement
   : 'break' ';' -> ^(BreakToken)
   ;
 
+returnStatement
+  : 'return' expr? ';' -> ^(ReturnToken expr?)
+  ;
+
 expressionStatement
   : expr ';' -> ^(ExpressionToken expr)
   ;
 
 expr
-  : primaryExpr (binOp primaryExpr)* -> ^(ExpressionToken primaryExpr binOp*)
+  : assignExpr
+  ;
+
+assignExpr
+  : logicalOrExpr ('=' assignExpr)?
+  ;
+
+logicalOrExpr
+  : logicalAndExpr ('||' logicalAndExpr)*
+  ;
+
+logicalAndExpr
+  : equalityExpr ('&&' equalityExpr)*
+  ;
+
+equalityExpr
+  : relationalExpr (('==' | '!=') relationalExpr)*
+  ;
+
+relationalExpr
+  : additiveExpr (('<' | '<=' | '>' | '>=') additiveExpr)*
+  ;
+
+additiveExpr
+  : multiplicativeExpr (('+' | '-') multiplicativeExpr)*
+  ;
+
+multiplicativeExpr
+  : unaryExpr (('*' | '/' | '%') unaryExpr)*
+  ;
+
+unaryExpr
+  : UnOp unaryExpr
+  | primaryExpr
   ;
 
 primaryExpr
   : '(' expr ')'
-  | literal
+  | identifier '(' expressionList? ')'  -> ^(CallToken identifier expressionList?)
+  | identifier '[' expressionList ']' -> ^(ArrayToken identifier expressionList)
   | identifier
-  ;
-
-callExpr
-  : identifier '(' argList? ')' -> ^(CallToken identifier argList?)
-  ;
-
-indexerExpr
-  : identifier '[' expressionList ']' -> ^(ArrayToken identifier expressionList)
+  | Literal
   ;
 
 expressionList
@@ -129,11 +162,18 @@ builtin
   : BuiltIn
   ;
 
-binOp
-  : '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^' | '==' | '!=' | '<' | '<=' | '>' | '>='
+BinOp
+  : '+' | '-' | '*' | '/' | '%' 
+  | '&&' | '||' 
+  | '&' | '|' | '^' 
+  | '==' | '!=' | '<' | '<=' | '>' | '>='
   ;
 
-literal
+UnOp
+  : '-' | '!'
+  ;
+
+Literal
   : Bool
   | Bits
   | Hex
