@@ -1,3 +1,14 @@
 {
-    "cmake.buildDirectory": "${workspaceFolder}/build"
-  }  
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "C_Cpp.intelliSenseEngine": "default",
+    "files.associations": {
+      "stdlib.h": "c",
+      "graphstructures.h": "c",
+      "stdio.h": "c",
+      "stdbool.h": "c",
+      "typeinfo": "c",
+      "string.h": "c",
+      "antlr3.h": "c",
+      "mylangparser.h": "c"
+    }
+}  

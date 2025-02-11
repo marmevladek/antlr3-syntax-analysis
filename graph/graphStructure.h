@@ -1,41 +1,47 @@
-#ifndef GRAPHSTRUCTURES_H
-#define GRAPHSTRUCTURES_H
+#ifndef GRAPH_STRUCTURES_H
+#define GRAPH_STRUCTURES_H
 
 #include <stdbool.h>
-#include <stdlib.h>
-#include <antlr3.h>
 
 
-typedef struct cfgNode {
+struct astNode;
+
+struct cfgNode {
     int id;
-    pANTLR3_BASE_TREE astNode;
-    char *name;
+    char* name;
+    struct astNode* ast;
+    struct cfgNode* conditionalBranch;
+    struct cfgNode* defaultBranch;
     bool isTraversed;
+    bool isProcessed;
+    struct astNode* parseTree;
+};
 
-    struct cfgNode **nextNodes;
-} cfgNode;
-
-typedef struct funcNode {
+struct funcNode {
     char *identifier;
-    cfgNode *entryNode;
-    cfgNode **cfgNodes;
-    int nodeCount;
-} funcNode;
+    struct astNode *signature;
+    struct astNode *body;
+    struct cfgNode *cfgEntry;
+    struct cfgNode *cfgExit;
+    char *sourceFileName;
 
-typedef struct programGraph {
-    funcNode **functions;
+    int callNum;
+    char **callNames;
+    struct funcNode **calls;
+};
+
+struct context {
+    struct cfgNode *curr;
+    struct cfgNode *entryNode;
+    struct cfgNode *exitNode;
+
+    int loopDepth;
+    struct breakStack *breakStack;
+    struct funcNode *function;
+};
+
+struct programGraph {
+    struct funcNode **functions;
     int funcCount;
-} programGraph;
-
-typedef struct Context {
-    cfgNode *currentNode;
-    char* currentToken;
-    struct Context *parent;
-    bool insideLoop;
-    bool insideCond;
-} context;
-
-typedef struct commonNodes {
-    cfgNode **cfgNodes;
-} commonNodes;
+};
 #endif
