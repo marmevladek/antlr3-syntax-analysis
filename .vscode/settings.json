@@ -9,6 +9,9 @@
       "typeinfo": "c",
       "string.h": "c",
       "antlr3.h": "c",
-      "mylangparser.h": "c"
+      "mylangparser.h": "c",
+      "typeindex": "c",
+      "chrono": "c",
+      "text_encoding": "c"
     }
 }  
