@@ -172,23 +172,6 @@ binShiftBinary: plusBinary (binOpBinShift^ plusBinary)*;// -> ^(Binary plusBinar
 plusBinary: multBinary (binOpPlus^ multBinary)*;// -> ^(Binary multBinary (binOpPlus multBinary)*);
 multBinary: exprTerm (binOpMult^ expr)*;// -> ^(Binary exprTerm (binOpMult expr)+);
 
-//binary: assShiftBinary (binOpBinAssLog assShiftBinary)* -> ^(Binary assShiftBinary (binOpBinAssLog assShiftBinary)*);
-//assShiftBinary: multAssBinary (binOpBinAssShift multAssBinary)*;
-//multAssBinary: sumAssBinary (binOpMultAss sumAssBinary)*;
-//sumAssBinary: assBinary (binOpSumAss assBinary)*;
-//assBinary: logOrBinary (binOpAss logOrBinary)*;
-//logOrBinary: logAndBinary (binOpLogOr logAndBinary)*;
-//logAndBinary: binOrBinary (binOpLogAnd binOrBinary)*;
-//binOrBinary: xorBinary (binOpBinOr xorBinary)*;
-//xorBinary: binAndBinary (binOpXOR binAndBinary)*;
-//binAndBinary: eqBinary (binOpBinAnd eqBinary)*;
-//eqBinary: compBinary (binOpEq compBinary)*;
-//compBinary: binShiftBinary (binOpComp binShiftBinary)*;
-//binShiftBinary: plusBinary (binOpBinShift plusBinary)*;
-//plusBinary: multBinary (binOpPlus multBinary)*;
-//multBinary: exprTerm (binOpMult expr)*;
-//multBinary: (braces | call | indexer | place | literal) (binOpMult expr)*;
-
 unOpNeg: logneg='!' -> ^(UnOp $logneg) 
 | binneg='~' -> ^(UnOp $binneg) 
 ;
