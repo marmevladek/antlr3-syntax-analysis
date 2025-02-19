@@ -22,6 +22,31 @@ static char* safeStrdup(const char *s) {
     return s ? strdup(s) : NULL;
 }
 
+
+static void checkBinOp(const char** n) {
+    if (strcmp(*n, "BinOpAss") == 0) *n = "=";
+    if (strcmp(*n, "BinOpBinPlus") == 0) *n = "+";
+    if (strcmp(*n, "BinOpBinAssSum") == 0) *n = "+=";
+    if (strcmp(*n, "BinOpBinAssNeg") == 0 ) *n = "-=";
+    if (strcmp(*n, "BinOpBinMinus") == 0 ) *n = "-";
+    if (strcmp(*n, "BinOpMult") == 0 ) *n = "*";
+    if (strcmp(*n, "BinOpDiv") == 0 ) *n = "/";
+    if (strcmp(*n, "BinOpMod") == 0 ) *n = "%";
+    if (strcmp(*n, "BinOpBinLS") == 0 ) *n = "<<";
+    if (strcmp(*n, "BinOpBinRS") == 0 ) *n = ">>";
+    if (strcmp(*n, "BinOpLt") == 0 ) *n = "<";
+    if (strcmp(*n, "BinOpLte") == 0 ) *n = "<=";
+    if (strcmp(*n, "BinOpGt") == 0 ) *n = ">";
+    if (strcmp(*n, "BinOpGte") == 0 ) *n = ">=";
+    if (strcmp(*n, "BinOpEq") == 0 ) *n = "==";
+    if (strcmp(*n, "BinOpNonEq") == 0 ) *n = "!=";
+    if (strcmp(*n, "BinOpBinAnd") == 0 ) *n = "&";
+    if (strcmp(*n, "BinOpBinXOR") == 0 ) *n = "^";
+    if (strcmp(*n, "BinOpBinOr") == 0 ) *n = "|";
+    if (strcmp(*n, "BinOpLogAnd") == 0 ) *n = "&&";
+    if (strcmp(*n, "BinOpLogOr") == 0 ) *n = "||";
+}
+
 static void addNodeToGlobalList(struct cfgNode *node) {
     struct cfgNode **tmp = realloc(allNodes, sizeof(struct cfgNode*)*(allNodesCount+1));
     if (!tmp) {
@@ -35,9 +60,7 @@ static void addNodeToGlobalList(struct cfgNode *node) {
 static bool isNodeInList(struct cfgNode *candidate) {
     if (!candidate) return false;
     for (int i=0; i<allNodesCount; i++) {
-        if (allNodes[i] == candidate) {
-            return true;
-        }
+        if (allNodes[i] == candidate) return true;
     }
     return false;
 }
@@ -51,24 +74,18 @@ struct cfgNode* createCfgNode(pANTLR3_BASE_TREE tree) {
     }
     node->id = nodeId++;
     node->ast = (struct astNode*)tree;
-    node->isProcessed = false; // Инициализируем как необработанный
+    node->isProcessed = false;
     addNodeToGlobalList(node);
     return node;
 }
 
-/*
-    WIP
-*/
 struct funcNode* processFunction(pANTLR3_BASE_TREE funcTree, char* name) {
     struct funcNode *f = calloc(1, sizeof(struct funcNode));
-    f->identifier = safeStrdup(name? name : "unknown_func");
-
+    f->identifier = safeStrdup(name ? name : "unknown_func");
     f->cfgEntry = createCfgNode(funcTree);
     f->cfgEntry->name = safeStrdup(f->identifier);
-
     f->cfgExit = createCfgNode(NULL);
     f->cfgExit->name = safeStrdup("func_exit");
-
     return f;
 }
 
@@ -100,111 +117,78 @@ static bool isControlNode(const char* n) {
 }
 
 static void getExpressionString(pANTLR3_BASE_TREE tree, char* buf, size_t sz) {
-    if (!tree || sz<2) return;
+    if (!tree || sz < 2) return;
     pANTLR3_STRING s = tree->toString(tree);
-    const char* nm = (s&&s->chars)? s->chars:"";
+    const char* nm = (s && s->chars) ? s->chars : "";
     unsigned cc = tree->getChildCount(tree);
 
-    if (isControlNode(nm)) {
-        for (unsigned i=0; i<cc; i++) {
-            getExpressionString(tree->getChild(tree,i), buf, sz);
-        }
-        return;
-    }
+    // Замена BinOpAss на =
+    if (strcmp(nm, "BinOpAss") == 0) nm = "=";
+    checkBinOp(&nm);
 
-    if (cc==0) {
-        if (strlen(buf)+strlen(nm)+2 < sz) {
-            strcat(buf,nm);
-        }
-    } 
-    else if (cc==2 && (
-             !strcmp(nm,"==")||!strcmp(nm,"!=")||
-             !strcmp(nm,"+") ||!strcmp(nm,"-")  ||
-             !strcmp(nm,"*") ||!strcmp(nm,"/")  ||
-             !strcmp(nm,"%")))
-    {
-        strcat(buf,"(");
-        getExpressionString(tree->getChild(tree,0), buf, sz);
-        strcat(buf,nm);
-        getExpressionString(tree->getChild(tree,1), buf, sz);
-        strcat(buf,")");
+    if (cc == 0) {
+        snprintf(buf + strlen(buf), sz - strlen(buf), "%s", nm);
+    } else if (cc == 2) {
+        snprintf(buf + strlen(buf), sz - strlen(buf), "(");
+        getExpressionString(tree->getChild(tree, 0), buf, sz);
+        snprintf(buf + strlen(buf), sz - strlen(buf), "%s", nm);
+        getExpressionString(tree->getChild(tree, 1), buf, sz);
+        snprintf(buf + strlen(buf), sz - strlen(buf), ")");
     } else {
-        for (unsigned i=0; i<cc; i++) {
-            getExpressionString(tree->getChild(tree,i), buf, sz);
+        for (unsigned i = 0; i < cc; i++) {
+            getExpressionString(tree->getChild(tree, i), buf, sz);
         }
     }
 }
-
-// ------------------------------------------------------------------------
-// processTreeNode + обработчики if/while/break/return
-// ------------------------------------------------------------------------
 
 static void processTreeNode(pANTLR3_BASE_TREE tree, struct context *ctx);
 
 static void processConditional(pANTLR3_BASE_TREE ifTree, struct context *ctx) {
     struct cfgNode *ifNode = createCfgNode(ifTree);
+    char exprBuf[256] = {0};
 
-    char exprBuf[256];
-    exprBuf[0] = '\0';
-    unsigned cc = ifTree->getChildCount(ifTree);
-    pANTLR3_BASE_TREE ifExprChild = NULL;
-    pANTLR3_BASE_TREE ifBodyChild  = NULL;
-    pANTLR3_BASE_TREE elseBodyChild  = NULL;
-    if (cc > 2) ifExprChild = ifTree->getChild(ifTree, 2);
-    if (cc > 4) ifBodyChild = ifTree->getChild(ifTree, 4);
-    if (cc > 6) elseBodyChild = ifTree->getChild(ifTree, 6);
-    if (ifExprChild) {
-        getExpressionString(ifExprChild, exprBuf, sizeof(exprBuf));
+    int cc = ifTree->getChildCount(ifTree);
+    if (cc < 7) {
+        fprintf(stderr, "Ошибка: Некорректная структура if-узла\n");
+        return;
     }
-    if (exprBuf[0]) {
-        char tmp[300];
-        snprintf(tmp, sizeof(tmp), "if (%s)", exprBuf);
-        ifNode->name = safeStrdup(tmp);
-    } else {
-        ifNode->name = safeStrdup("if (?)");
-    }
-    if (ctx->curr) {
-        ctx->curr->defaultBranch = ifNode;
-    }
+
+    pANTLR3_BASE_TREE ifExprChild = ifTree->getChild(ifTree, 2);
+    pANTLR3_BASE_TREE ifBodyChild = ifTree->getChild(ifTree, 4);
+    pANTLR3_BASE_TREE elseBodyChild = ifTree->getChild(ifTree, 6);
+
+    if (ifExprChild) getExpressionString(ifExprChild, exprBuf, sizeof(exprBuf));
+    
+    char tmp[300];
+    snprintf(tmp, sizeof(tmp), "if (%s)", exprBuf[0] ? exprBuf : "?");
+    ifNode->name = safeStrdup(tmp);
+
+    if (ctx->curr) ctx->curr->defaultBranch = ifNode;
     ctx->curr = ifNode;
 
     struct cfgNode* endIf = createCfgNode(NULL);
     endIf->name = safeStrdup("endif");
-    
+
     if (ifBodyChild) {
-        ifNode->conditionalBranch = NULL;
         struct cfgNode *bodyStart = createCfgNode(ifBodyChild);
-        bodyStart->name = safeStrdup("if_block");
+        bodyStart->name = safeStrdup("if_body");
         ifNode->conditionalBranch = bodyStart;
         ctx->curr = bodyStart;
         processTreeNode(ifBodyChild, ctx);
-        if (ctx->curr && ctx->curr->defaultBranch==NULL) {
-            ctx->curr->defaultBranch = endIf;
-        }
+        if (ctx->curr) ctx->curr->defaultBranch = endIf;
     }
-
 
     if (elseBodyChild) {
-        struct cfgNode* elseStart = createCfgNode(elseBodyChild);
-        elseStart->name = safeStrdup("else_block");
+        struct cfgNode *elseStart = createCfgNode(elseBodyChild);
+        elseStart->name = safeStrdup("else_body");
         ifNode->defaultBranch = elseStart;
         ctx->curr = elseStart;
-        unsigned eCount = elseBodyChild->getChildCount(elseBodyChild);
-        for (unsigned i = 0; i < eCount; i++) {
-            pANTLR3_BASE_TREE ch = elseBodyChild->getChild(elseBodyChild, i);
-            char* childNodeStr = (char*)ch->toString(ch)->chars;
-        }
-
         processTreeNode(elseBodyChild, ctx);
-
-        if (ctx->curr && ctx->curr->defaultBranch==NULL) {
-            ctx->curr->defaultBranch = endIf;
-        }
+        if (ctx->curr) ctx->curr->defaultBranch = endIf;
     } else {
-        if (!ifNode->defaultBranch) {
-            ifNode->defaultBranch = endIf;
-        }
+        ifNode->defaultBranch = endIf;
     }
+
     ctx->curr = endIf;
 }
 
@@ -354,12 +338,6 @@ static void processDo(pANTLR3_BASE_TREE doTree, struct context *ctx) {
     popBreak(ctx);
 }
 
-static void checkBinOp(const char* n) {
-    if (!strcmp(n, "BinOpAss")) n = "=";
-    if (!strcmp(n, "BinOpBinPlus")) n = "+";
-    if (!strcmp(n, "BinOpBinAssSum")) n = "-";
-}
-
 static bool isTrivialNode(const char* n) {
     if (!n) return true;
     if (!strcmp(n,"Identifier"))    return true;
@@ -394,29 +372,27 @@ static bool isTrivialNode(const char* n) {
 }
 
 static void processGenericNode(pANTLR3_BASE_TREE tree, struct context *ctx) {
-    if (!tree) return;
     pANTLR3_STRING s = tree->toString(tree);
     const char* nm = (s && s->chars) ? s->chars : "";
 
+    if (strcmp(nm, "BinOpAss") == 0) nm = "=";
+    checkBinOp(&nm);
+
     if (isTrivialNode(nm)) {
-        unsigned cc = tree->getChildCount(tree);
-        for (unsigned i=0; i<cc; i++) {
-            processTreeNode(tree->getChild(tree,i), ctx);
+        for (unsigned i = 0; i < tree->getChildCount(tree); i++) {
+            processTreeNode(tree->getChild(tree, i), ctx);
         }
         return;
     }
+
     struct cfgNode* g = createCfgNode(tree);
     g->name = safeStrdup(nm);
 
-    if (ctx->curr) {
-        ctx->curr->defaultBranch = g;
-    }
+    if (ctx->curr) ctx->curr->defaultBranch = g;
     ctx->curr = g;
 
-    unsigned cc=tree->getChildCount(tree);
-    for (unsigned i=0;i<cc;i++) {
-        pANTLR3_BASE_TREE ch=tree->getChild(tree,i);
-        processTreeNode(ch, ctx);
+    for (unsigned i = 0; i < tree->getChildCount(tree); i++) {
+        processTreeNode(tree->getChild(tree, i), ctx);
     }
 }
 
@@ -426,9 +402,6 @@ static void processTreeNode(pANTLR3_BASE_TREE tree, struct context *ctx) {
     pANTLR3_STRING s = tree->toString(tree);
     const char* nm = (s && s->chars) ? s->chars : "";
 
-    // if (!strcmp(nm, "Block")) {
-    //     processBlock(tree, ctx);
-    // }
     if (!strcmp(nm, "IfStatement")) {
         processConditional(tree, ctx);
     }
