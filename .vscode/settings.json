@@ -12,6 +12,20 @@
       "mylangparser.h": "c",
       "typeindex": "c",
       "chrono": "c",
-      "text_encoding": "c"
+      "text_encoding": "c",
+      "__hash_table": "c",
+      "__tree": "c",
+      "array": "c",
+      "type_traits": "c",
+      "forward_list": "c",
+      "limits": "c",
+      "ratio": "c",
+      "tuple": "c",
+      "variant": "c",
+      "charconv": "c",
+      "compare": "c",
+      "complex": "c",
+      "functional": "c",
+      "utility": "c"
     }
 }  

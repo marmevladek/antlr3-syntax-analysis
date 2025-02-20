@@ -12,7 +12,7 @@ bool test_func_0() {
 bool test_func_1(int a, 
                 int b, 
                 byte test) {
-    int i = 0, c = 0, a = 0;
+    int i = 2, c = 30, a = 14;
     while (i < 10) {
         int a;
         if (i > 3) {

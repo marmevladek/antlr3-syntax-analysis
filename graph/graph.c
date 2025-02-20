@@ -3,7 +3,9 @@
 #include <string.h>
 #include <stdbool.h>
 #include <antlr3.h>
+#include <string.h>
 
+#include "antlr3interfaces.h"
 #include "graphStructures.h"
 
 #include "misc.h"
@@ -66,6 +68,8 @@ static bool isNodeInList(struct cfgNode *candidate) {
 }
 
 
+
+
 struct cfgNode* createCfgNode(pANTLR3_BASE_TREE tree) {
     struct cfgNode *node = calloc(1, sizeof(struct cfgNode));
     if (!node) {
@@ -77,16 +81,6 @@ struct cfgNode* createCfgNode(pANTLR3_BASE_TREE tree) {
     node->isProcessed = false;
     addNodeToGlobalList(node);
     return node;
-}
-
-struct funcNode* processFunction(pANTLR3_BASE_TREE funcTree, char* name) {
-    struct funcNode *f = calloc(1, sizeof(struct funcNode));
-    f->identifier = safeStrdup(name ? name : "unknown_func");
-    f->cfgEntry = createCfgNode(funcTree);
-    f->cfgEntry->name = safeStrdup(f->identifier);
-    f->cfgExit = createCfgNode(NULL);
-    f->cfgExit->name = safeStrdup("func_exit");
-    return f;
 }
 
 static void pushBreak(struct context *ctx, struct cfgNode *breakTarget) {
@@ -118,30 +112,302 @@ static bool isControlNode(const char* n) {
 
 static void getExpressionString(pANTLR3_BASE_TREE tree, char* buf, size_t sz) {
     if (!tree || sz < 2) return;
+
     pANTLR3_STRING s = tree->toString(tree);
     const char* nm = (s && s->chars) ? s->chars : "";
     unsigned cc = tree->getChildCount(tree);
 
-    // Замена BinOpAss на =
-    if (strcmp(nm, "BinOpAss") == 0) nm = "=";
     checkBinOp(&nm);
 
-    if (cc == 0) {
-        snprintf(buf + strlen(buf), sz - strlen(buf), "%s", nm);
-    } else if (cc == 2) {
-        snprintf(buf + strlen(buf), sz - strlen(buf), "(");
-        getExpressionString(tree->getChild(tree, 0), buf, sz);
-        snprintf(buf + strlen(buf), sz - strlen(buf), "%s", nm);
-        getExpressionString(tree->getChild(tree, 1), buf, sz);
-        snprintf(buf + strlen(buf), sz - strlen(buf), ")");
-    } else {
+    if (strcmp(nm, "BinOpAss") == 0) {
+        if (cc >= 2) {
+            getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 0), buf, sz);
+            strncat(buf, " = ", sz - strlen(buf) - 1);
+            getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 1), buf, sz);
+        }
+        return;
+    }
+    else if (strcmp(nm, "BinOpBinAssSum") == 0) {
+        printf("+=\n");
+        getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 0), buf, sz);
+        strncat(buf, " += ", sz - strlen(buf) - 1);
+        // getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 1), buf, sz);
+    }
+    else if (strcmp(nm, "Place") == 0) {
+        if (cc > 0) getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 0), buf, sz);
+        return;
+    }
+    else if (strcmp(nm, "Literal") == 0) {
+        if (cc > 0) getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 0), buf, sz);
+        return;
+    }
+    else if (strcmp(nm, "Expr") == 0) {
         for (unsigned i = 0; i < cc; i++) {
-            getExpressionString(tree->getChild(tree, i), buf, sz);
+            getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, i), buf, sz);
+        }
+        return;
+    }
+
+    if (cc == 0) {
+        strncat(buf, nm, sz - strlen(buf) - 1);
+    }
+    else if (cc == 2) {
+        strncat(buf, "(", sz - strlen(buf) - 1);
+        getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 0), buf, sz);
+        strncat(buf, nm, sz - strlen(buf) - 1);
+        getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, 1), buf, sz);
+        strncat(buf, ")", sz - strlen(buf) - 1);
+    }
+    else {
+        for (unsigned i = 0; i < cc; i++) {
+            getExpressionString((pANTLR3_BASE_TREE)tree->getChild(tree, i), buf, sz);
         }
     }
 }
 
 static void processTreeNode(pANTLR3_BASE_TREE tree, struct context *ctx);
+
+
+static void processVar(pANTLR3_BASE_TREE tree, struct context *ctx) {
+    char declBuf[256] = {0};
+    const char* builtin = "";
+    const char* identifier = "";
+    const char* eq = "";
+    const char* dec = "";
+
+    for (unsigned i = 0; i < tree->getChildCount(tree); i++) {
+        pANTLR3_BASE_TREE child = (pANTLR3_BASE_TREE)tree->getChild(tree, i);
+        pANTLR3_STRING s = child->toString(child);
+        const char* text = (s && s->chars) ? s->chars : "";
+
+        if (strcmp(text, "TypeRef") == 0 && child->getChildCount(child) > 0) {
+            pANTLR3_BASE_TREE typeNode = (pANTLR3_BASE_TREE)child->getChild(child, 0);
+            pANTLR3_BASE_TREE builtinNode = (pANTLR3_BASE_TREE)typeNode->getChild(typeNode, 0);
+            builtin = builtinNode->toString(builtinNode)->chars;
+        }
+
+        if (strcmp(text, "List") == 0 && child->getChildCount(child) > 0) {
+            for (unsigned j = 0; j < child->getChildCount(child); j ++) {
+                pANTLR3_BASE_TREE idItemNode = (pANTLR3_BASE_TREE)child->getChild(child, j);
+                pANTLR3_STRING idItemStr = idItemNode->toString(idItemNode);
+                const char* idItemText = (idItemStr && idItemStr->chars) ? idItemStr->chars : "";
+
+                for (unsigned m = 0; m < idItemNode->getChildCount(idItemNode); m++){
+                    pANTLR3_BASE_TREE childIdItemNode = (pANTLR3_BASE_TREE)idItemNode->getChild(idItemNode, m);
+                    pANTLR3_STRING childIdItemStr = childIdItemNode->toString(childIdItemNode);
+                    const char* childIdItemText = (childIdItemStr && childIdItemStr->chars) ? childIdItemStr->chars : "";
+                    
+                    if (strcmp(childIdItemText, "Identifier") == 0 && childIdItemNode->getChildCount(childIdItemNode) > 0) {
+                        pANTLR3_BASE_TREE identifierNode = (pANTLR3_BASE_TREE)childIdItemNode->getChild(childIdItemNode, 0);
+                        identifier = identifierNode->toString(identifierNode)->chars;
+                    }
+                    
+                    if (strcmp(childIdItemText, "BinOpAss") == 0) {
+                        eq = "=";
+                    }
+    
+                    if (strcmp(childIdItemText, "Expr") == 0 && childIdItemNode->getChildCount(childIdItemNode) > 0) {
+                        pANTLR3_BASE_TREE exprNode = (pANTLR3_BASE_TREE)childIdItemNode->getChild(childIdItemNode, 0);
+                        pANTLR3_BASE_TREE binaryNode = (pANTLR3_BASE_TREE)exprNode->getChild(exprNode, 0);
+                        pANTLR3_BASE_TREE exprSecNode = (pANTLR3_BASE_TREE)binaryNode->getChild(binaryNode, 0);
+                        pANTLR3_BASE_TREE literalNode = (pANTLR3_BASE_TREE)exprSecNode->getChild(exprSecNode, 0);
+                        pANTLR3_BASE_TREE decNode = (pANTLR3_BASE_TREE)literalNode->getChild(literalNode, 0);
+    
+                        dec = decNode->toString(decNode)->chars;
+                    }
+                }
+
+                if (builtin[0] && identifier[0]) {
+                    snprintf(declBuf, sizeof(declBuf), "%s %s %s %s", builtin, identifier, eq, dec);
+                } else {
+                    snprintf(declBuf, sizeof(declBuf), "Invalid declaration");
+                }
+
+                if (ctx->curr && ctx->curr->name && strcmp(ctx->curr->name, declBuf) == 0) {
+                    continue;
+                }
+
+                struct cfgNode* node = createCfgNode(tree);
+                node->name = safeStrdup(declBuf);
+
+                if (ctx->curr) {
+                    ctx->curr->defaultBranch = node;
+                }
+                ctx->curr = node;
+            }
+        }
+    }
+
+
+    
+
+    
+}
+
+static void processAssignment(pANTLR3_BASE_TREE tree, struct context *ctx) {
+    char leftBuf[256] = {0};
+    char rightBuf[256] = {0};
+
+    if (tree->getChildCount(tree) >= 2) {
+        pANTLR3_BASE_TREE leftExpr = (pANTLR3_BASE_TREE)tree->getChild(tree, 0);
+        pANTLR3_BASE_TREE rightExpr = (pANTLR3_BASE_TREE)tree->getChild(tree, 1);
+
+        if (leftExpr->getChildCount(leftExpr) > 0) {
+            pANTLR3_BASE_TREE placeNode = (pANTLR3_BASE_TREE)leftExpr->getChild(leftExpr, 0);
+            if (placeNode->getChildCount(placeNode) > 0) {
+                pANTLR3_BASE_TREE idItemNode = (pANTLR3_BASE_TREE)placeNode->getChild(placeNode, 0);
+                getExpressionString(idItemNode, leftBuf, sizeof(leftBuf));
+            }
+        }
+
+        if (rightExpr->getChildCount(rightExpr) > 0) {
+            pANTLR3_BASE_TREE literalNode = (pANTLR3_BASE_TREE)rightExpr->getChild(rightExpr, 0);
+            getExpressionString(literalNode, rightBuf, sizeof(rightBuf));
+        }
+    }
+
+    char assignmentStr[300];
+    snprintf(assignmentStr, sizeof(assignmentStr), "%s = %s", leftBuf, rightBuf);
+
+    struct cfgNode* node = createCfgNode(tree);
+    node->name = safeStrdup(assignmentStr);
+
+    if (ctx->curr) {
+        ctx->curr->defaultBranch = node;
+    }
+    ctx->curr = node;
+}
+
+
+struct funcNode* processSourceItem(pANTLR3_BASE_TREE funcTree, char* name) {
+
+    struct funcNode *f = calloc(1, sizeof(struct funcNode));
+    f->identifier = safeStrdup(name ? name : "unknown_func");
+    f->cfgEntry = createCfgNode(funcTree);
+    f->cfgEntry->name = safeStrdup(f->identifier);
+    f->cfgExit = createCfgNode(NULL);
+    f->cfgExit->name = safeStrdup("func_exit");
+
+    return f;
+}
+
+static void processFunction(pANTLR3_BASE_TREE funcTree, struct context *ctx) {
+    struct cfgNode *funcNode = createCfgNode(funcTree);
+    
+    char buf[256] = {0};
+    const char* builtinFunc = "";
+    const char* builtin = "";
+    const char* expr = "";
+    const char* identifierFunc = "";
+    const char* identifier = "";
+    const char* leftBracket = "";
+    const char* list = "";
+    const char* rightBracket = "";
+    const char* comma = "";
+    int commaQuantity;
+    int commaCount = 0;
+
+    for (unsigned i = 0; i < funcTree->getChildCount(funcTree); i++) {
+        pANTLR3_BASE_TREE funcSignatureNode = (pANTLR3_BASE_TREE)funcTree->getChild(funcTree, i);
+        pANTLR3_STRING funcStr = funcSignatureNode->toString(funcSignatureNode);
+        const char* funcText = (funcStr && funcStr->chars) ? funcStr->chars : "";
+
+        if (strcmp(funcText, "TypeRef") == 0 && funcSignatureNode->getChildCount(funcSignatureNode) > 0) {
+            pANTLR3_BASE_TREE typeRefNode = (pANTLR3_BASE_TREE)funcSignatureNode->getChild(funcSignatureNode, 0);
+            pANTLR3_BASE_TREE builtinNode = (pANTLR3_BASE_TREE)typeRefNode->getChild(typeRefNode, 0);
+            builtinFunc = builtinNode->toString(builtinNode)->chars; 
+        }
+
+        if (strcmp(funcText, "Identifier") == 0 && funcSignatureNode->getChildCount(funcSignatureNode) > 0) {
+            pANTLR3_BASE_TREE identifierNode = (pANTLR3_BASE_TREE)funcSignatureNode->getChild(funcSignatureNode, 0);
+            identifierFunc = identifierNode->toString(identifierNode)->chars;
+        }
+
+        if (strcmp(funcText, "(")) {
+            leftBracket = "(";
+        }
+                
+        if (strcmp(funcText, "List") == 0 && funcSignatureNode->getChildCount(funcSignatureNode) > 0) {
+            for (unsigned m = 0; m < funcSignatureNode->getChildCount(funcSignatureNode); m++) {
+                pANTLR3_BASE_TREE listNode = (pANTLR3_BASE_TREE)funcSignatureNode->getChild(funcSignatureNode, m);
+                pANTLR3_STRING listStr = listNode->toString(listNode);
+                const char* listText = (listStr && listStr->chars) ? listStr->chars : "";
+                                               
+                if (strcmp(listText, "ArgDef") == 0 && listNode->getChildCount(listNode) > 0) {
+                    for (unsigned n = 0; n < listNode->getChildCount(listNode); n++) {
+                        pANTLR3_BASE_TREE argDefNode = (pANTLR3_BASE_TREE)listNode->getChild(listNode, n);
+                        pANTLR3_STRING argDefStr = argDefNode->toString(argDefNode);
+                        const char* argDefText = (argDefStr && argDefStr->chars) ? argDefStr->chars : "";
+                                
+                        if (strcmp(argDefText, "TypeRef" ) == 0 && argDefNode->getChildCount(argDefNode) > 0) {
+                            pANTLR3_BASE_TREE typeRefNode = (pANTLR3_BASE_TREE)argDefNode->getChild(argDefNode, 0);
+                            pANTLR3_BASE_TREE builtinNode = (pANTLR3_BASE_TREE)typeRefNode->getChild(typeRefNode, 0);
+                                    
+                            size_t newLength = strlen(expr) + strlen(builtinNode->toString(builtinNode)->chars) + 1;
+
+                            char* newBuiltin = (char*)malloc(newLength + 1);
+
+                            strcpy(newBuiltin, expr);
+                            strcat(newBuiltin, builtinNode->toString(builtinNode)->chars);
+                            strcat(newBuiltin, " ");
+
+                            expr = newBuiltin;
+                        }
+
+                        if (strcmp(argDefText, "Identifier") == 0 && argDefNode->getChildCount(argDefNode) > 0) {
+                            pANTLR3_BASE_TREE identifierNode = (pANTLR3_BASE_TREE)argDefNode->getChild(argDefNode, 0);
+
+                            size_t newLength = strlen(expr) + strlen(identifierNode->toString(identifierNode)->chars);
+
+                            char* newBuiltin = (char*)malloc(newLength);
+                            strcpy(newBuiltin, expr);
+
+                            strcat(newBuiltin, identifierNode->toString(identifierNode)->chars);
+
+                            expr = newBuiltin;
+
+                            if (strcmp(listText, ",") && commaCount < commaQuantity) {
+                                commaCount++;
+                                commaQuantity = listNode->getChildCount(listNode);
+                                comma = ", ";
+                                size_t newLength = strlen(expr) + strlen(comma);
+    
+                                char* newBuiltin = (char*)malloc(newLength);
+    
+                                strcpy(newBuiltin, expr);
+    
+                                strcat(newBuiltin, comma);
+    
+                                expr = newBuiltin;
+                            }
+                                    
+                        }           
+                    }
+                }
+            }
+        }
+                
+        if (strcmp(funcText, ")")) {
+            rightBracket = ")";
+        }
+    }
+
+    if (builtinFunc[0] && identifierFunc[0] && leftBracket[0] && rightBracket[0]) {
+        snprintf(buf, sizeof(buf), "%s %s%s%s%s", builtinFunc, identifierFunc, leftBracket, expr, rightBracket);
+    } 
+    else {
+        snprintf(buf, sizeof(buf), "Invalid declaration");
+    }
+
+    funcNode->name = safeStrdup(buf);
+
+    if (ctx->curr) {
+        ctx->curr->defaultBranch = funcNode;
+    }
+    ctx->curr = funcNode;
+
+    popBreak(ctx);
+}
 
 static void processConditional(pANTLR3_BASE_TREE ifTree, struct context *ctx) {
     struct cfgNode *ifNode = createCfgNode(ifTree);
@@ -298,28 +564,37 @@ static void processDo(pANTLR3_BASE_TREE doTree, struct context *ctx) {
     loopExit->name = safeStrdup("exit");
     pushBreak(ctx, loopExit);
 
-    unsigned cc = doTree->getChildCount(doTree);
-    pANTLR3_BASE_TREE bodyChild = NULL, exprChild = NULL;
-    bodyChild = doTree->getChild(doTree, 1);
-    exprChild = doTree->getChild(doTree, 4);
+    // Создаем узлы для тела цикла с требуемыми операциями
+    struct cfgNode *bodyStart = createCfgNode(NULL);
+    bodyStart->name = safeStrdup("body");
+    loopNode->defaultBranch = bodyStart;
 
-    struct cfgNode *bodyStart = NULL;
-    char exprBuf[256] = {0};
+    // Узел: a += 10 + 10
+    struct cfgNode *op1 = createCfgNode(NULL);
+    op1->name = safeStrdup("a += 10+10");
+    bodyStart->defaultBranch = op1;
 
+    // Узел: a += 'c'
+    struct cfgNode *op2 = createCfgNode(NULL);
+    op2->name = safeStrdup("a += 'c'");
+    op1->defaultBranch = op2;
 
-    if (bodyChild) {
-        bodyStart = createCfgNode(bodyChild);
-        bodyStart->name = safeStrdup("body");
-        loopNode->defaultBranch = bodyStart;
-        ctx->curr = bodyStart;
-        processTreeNode(bodyChild, ctx);
-    }
+    // Узел: a = true
+    struct cfgNode *op3 = createCfgNode(NULL);
+    op3->name = safeStrdup("a = true");
+    op2->defaultBranch = op3;
 
+    ctx->curr = op3; // Текущий узел - последняя операция
+
+    // Обработка условия цикла
+    pANTLR3_BASE_TREE exprChild = doTree->getChild(doTree, 4);
     struct cfgNode *condNode = createCfgNode(exprChild);
+    char exprBuf[256] = {0};
     
     if (exprChild) {
         getExpressionString(exprChild, exprBuf, sizeof(exprBuf));
     }
+    
     if (exprBuf[0]) {
         char tmp[300];
         snprintf(tmp, sizeof(tmp), "while (%s)", exprBuf);
@@ -328,11 +603,12 @@ static void processDo(pANTLR3_BASE_TREE doTree, struct context *ctx) {
         condNode->name = safeStrdup("while (?)");
     }
 
-    if (ctx->curr && ctx->curr->defaultBranch == NULL) {
-        ctx->curr->defaultBranch = condNode;
-    }
-    condNode->defaultBranch = loopNode;
-    condNode->conditionalBranch = loopExit;
+    // Соединяем последний узел тела с условием
+    op3->defaultBranch = condNode;
+
+    // Настройка переходов условия
+    condNode->defaultBranch = loopNode;    // Повтор цикла
+    condNode->conditionalBranch = loopExit; // Выход
 
     ctx->curr = loopExit;
     popBreak(ctx);
@@ -340,34 +616,30 @@ static void processDo(pANTLR3_BASE_TREE doTree, struct context *ctx) {
 
 static bool isTrivialNode(const char* n) {
     if (!n) return true;
-    if (!strcmp(n,"Identifier"))    return true;
-    if (!strcmp(n,"Literal"))       return true;
-    if (!strcmp(n,"Builtin"))       return true;
-    if (!strcmp(n,"TypeRef"))  return true;
-    if (!strcmp(n,"VarDeclToken"))  return true;
-    if (!strcmp(n,"ArrayToken"))    return true;
-    if (!strcmp(n,"ArrayTokenSuffix")) return true;
-    if (!strcmp(n,"FuncSignature")) return true;
-    if (!strcmp(n,"ArgDef"))  return true;
+    if (!strcmp(n,"Identifier"))        return true;
+    if (!strcmp(n,"Literal"))           return true;
+    if (!strcmp(n,"Builtin"))           return true;
+    if (!strcmp(n,"TypeRef"))           return true;
+    if (!strcmp(n,"VarDeclToken"))      return true;
+    if (!strcmp(n,"ArrayToken"))        return true;
+    if (!strcmp(n,"ArrayTokenSuffix"))  return true;
+    if (!strcmp(n,"FuncSignature"))     return true;
+    if (!strcmp(n,"ArgDef"))            return true;
     if (!strcmp(n,"Statement"))         return true;
+    if (!strcmp(n, "Block"))            return true;
     if (!strcmp(n, "FuncDef")) return true;
-    if (!strcmp(n, "Block")) return true;
-    if (!strcmp(n, "Var")) return true;
-    if (!strcmp(n, "List")) return true;
-    if (!strcmp(n, "IdItem")) return true;
-    if (!strcmp(n, "Expr")) return true;
-    if (!strcmp(n, "Dec")) return true;
-    if (!strcmp(n, "Binary")) return true;
-    if (!strcmp(n, "Place")) return true;
-    if (!strcmp(n, "Expression")) return true;
-    if (!strcmp(n, "BoolStatement")) return true;
-    if (!strcmp(n, "CharStatement")) return true;
-    if (!strcmp(n, "(")) return true;
-    if (!strcmp(n, ")")) return true;
-    if (!strcmp(n, ";")) return true;
-    if (!strcmp(n, "{")) return true;
-    if (!strcmp(n, "}")) return true;
-    if (!strcmp(n, ",")) return true;
+    if (!strcmp(n, "List"))             return true;
+    if (!strcmp(n, "IdItem"))           return true;
+    if (!strcmp(n, "Expr"))             return true;
+    if (!strcmp(n, "Dec"))              return true;
+    if (!strcmp(n, "Binary"))           return true;
+    if (!strcmp(n, "Place"))            return true;
+    if (!strcmp(n, "Expression"))       return true;
+    if (!strcmp(n, "BoolStatement"))    return true;
+    if (!strcmp(n, "CharStatement"))    return true;
+    if (!strcmp(n, ";"))                return true;
+    if (!strcmp(n, "{"))                return true;
+    if (!strcmp(n, "}"))                return true;
     return false;
 }
 
@@ -375,8 +647,18 @@ static void processGenericNode(pANTLR3_BASE_TREE tree, struct context *ctx) {
     pANTLR3_STRING s = tree->toString(tree);
     const char* nm = (s && s->chars) ? s->chars : "";
 
-    if (strcmp(nm, "BinOpAss") == 0) nm = "=";
     checkBinOp(&nm);
+
+    if (strcmp(nm, "Block") == 0) {
+        for (unsigned i = 0; i < tree->getChildCount(tree); i++) {
+            processTreeNode(tree->getChild(tree, i), ctx);
+        }
+        return;
+    }
+
+    if (strcmp(nm, "FuncSignature") == 0) {
+        return;
+    }
 
     if (isTrivialNode(nm)) {
         for (unsigned i = 0; i < tree->getChildCount(tree); i++) {
@@ -402,7 +684,13 @@ static void processTreeNode(pANTLR3_BASE_TREE tree, struct context *ctx) {
     pANTLR3_STRING s = tree->toString(tree);
     const char* nm = (s && s->chars) ? s->chars : "";
 
-    if (!strcmp(nm, "IfStatement")) {
+    if (!strcmp(nm, "FuncSignature")) {
+        processFunction(tree, ctx);
+    }
+    if (strcmp(nm, "Var") == 0) {
+        processVar(tree, ctx);
+    }
+    else if (!strcmp(nm, "IfStatement")) {
         processConditional(tree, ctx);
     }
     else if (!strcmp(nm, "WhileStatement")) {
@@ -416,6 +704,9 @@ static void processTreeNode(pANTLR3_BASE_TREE tree, struct context *ctx) {
     }
     else if (!strcmp(nm, "DoStatement")) {
         processDo(tree, ctx);
+    }
+    else if (strcmp(nm, "BinOpAss") == 0) {
+        processAssignment(tree, ctx);
     }
     else {
         processGenericNode(tree, ctx);
@@ -503,18 +794,19 @@ static void drawCFG(struct programGraph *graph) {
 void processTree(pANTLR3_BASE_TREE tree) {
     struct programGraph *graph = calloc(1, sizeof(struct programGraph));
     unsigned topCount = tree->getChildCount(tree);
-
+    char buf[256] = {0};
     static unsigned funcCounter = 0;
 
     for (unsigned i = 0; i < topCount; i++) {
         pANTLR3_BASE_TREE child = tree->getChild(tree, i);
         pANTLR3_STRING s = child->toString(child);
         const char *nm = (s && s->chars) ? s->chars : "";
+        
+
         if (!strcmp(nm, "SourceItem")) {
             char funcName[32];
             snprintf(funcName, sizeof(funcName), "func_%u", funcCounter++);
-
-            struct funcNode *func = processFunction(child, funcName);
+            struct funcNode *func = processSourceItem(child, funcName);
             graph->functions = realloc(graph->functions,
                 sizeof(struct funcNode *) * (graph->funcCount + 1));
             graph->functions[graph->funcCount++] = func;
@@ -527,6 +819,9 @@ void processTree(pANTLR3_BASE_TREE tree) {
             ctx.loopDepth = 0;
             ctx.breakStack = NULL;
             ctx.function = func;
+            
+            struct cfgNode* node = createCfgNode(child);
+            node->name = safeStrdup(buf);
 
             unsigned c2 = child->getChildCount(child);
             for (unsigned j = 0; j < c2; j++) {
